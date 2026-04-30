@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generador d'ID de Crema</title>
+
+<style>
+    body { background-color: #1b0f0f; color: #ffb199; font-family: Arial, sans-serif; }
+    .container { background:#2d1414; padding:30px; border-radius:12px; max-width:420px; margin:auto; text-align:center; }
+    .btn {
+        padding:12px 25px; border:none; border-radius:8px; cursor:pointer; font-weight:bold;
+        background:#e25722; color:#1b0f0f; transition:0.2s;
+    }
+    .btn:hover { background:#ff7c47; }
+    .copy-btn {
+        padding:6px 14px; border:2px solid #ff7c47; background:transparent;
+        color:#ff7c47; border-radius:8px; cursor:pointer; font-weight:bold;
+    }
+    .copy-btn:hover { background:#ff7c47; color:#1b0f0f; }
+    #resultat { margin-top:20px; border:2px solid #ff7c47; padding:15px; border-radius:10px; display:none; }
+    #error { color:#ff4f4f; margin-top:15px; font-weight:bold; }
+</style>
+
+</head>
+<body>
+
+<div class="container">
+    <h1 style="color:#ff7c47;">Generador d'ID de Crema</h1>
+
+    <button id="generarBtn" class="btn">GENERAR ID</button>
+
+    <div id="resultat">
+        <h3>ID Generat:</h3>
+        <p id="pResultatExpedient" style="font-size:24px; font-family:monospace;"></p>
+        <button id="copyBtn" class="copy-btn">Copiar</button>
+    </div>
+
+    <div id="error"></div>
+</div>
+
+<script>
+const generarBtn = document.getElementById("generarBtn");
+const resultatDiv = document.getElementById("resultat");
+const pResultat = document.getElementById("pResultatExpedient");
+const copyBtn = document.getElementById("copyBtn");
+const errorDiv = document.getElementById("error");
+
+generarBtn.addEventListener("click", async () => {
+    errorDiv.textContent = "";
+    resultatDiv.style.display = "none";
+    generarBtn.textContent = "Generant...";
+    generarBtn.disabled = true;
+
+    try {
+        // 1. TOKEN
+        const tokenRes = await fetch(
+            "https://www.arcgis.com/sharing/rest/oauth2/token?client_id=k0gInzwOWOcJVqoV&client_secret=2eb5e05c126243bc9bf9f706b87c0f45&grant_type=client_credentials&expiration=1440&f=json",
+            { method: "POST" }
+        );
+        const token = (await tokenRes.json()).access_token;
+
+        // 2. CONSULTAR *TOTS* ELS id_crema
+        const query =
+            "https://services-eu1.arcgis.com/jukYmBukbIJBEB9m/arcgis/rest/services/survey123_7408c3fb025a41cdb4d80693ba668e23/FeatureServer/0/query";
+
+        const params = new URLSearchParams({
+            where: "(id_crema IS NOT NULL) AND (id_crema <> '')",
+            outFields: "id_crema",
+            returnGeometry: false,
+            orderByFields: "OBJECTID ASC",
+            f: "json",
+            token: token
+        });
+
+        const fet = await fetch(query + "?" + params.toString());
+        const data = await fet.json();
+
+        if (!data.features || data.features.length === 0) {
+            throw new Error("No hi ha cap ID registrat.");
+        }
+
+        // 3. Extreure la part numèrica de TOTS els id_crema
+        let maxNumero = 0;
+
+        data.features.forEach(f => {
+            const id = f.attributes.id_crema;
+
+            if (typeof id === "string") {
+                const dig = id.match(/(\d+)/g); // obté totes les seqüències de dígits
+                if (dig) {
+                    // agafem l’última seqüència numèrica, sempre la part numèrica final
+                    const n = parseInt(dig[dig.length - 1], 10);
+                    if (!isNaN(n) && n > maxNumero) {
+                        maxNumero = n; // mantenim el número més alt real
+                    }
+                }
+            }
+        });
+
+        // 4. GENERAR NOU ID
+        const any = new Date().getFullYear();
+        const nouNumero = (maxNumero + 1).toString().padStart(3, "0");
+        const nouID = `${any}-CP${nouNumero}`;
+
+        // mostrar
+        pResultat.textContent = nouID;
+        resultatDiv.style.display = "block";
+
+    } catch (err) {
+        errorDiv.textContent = "Error: " + err.message;
+    }
+
+    generarBtn.textContent = "GENERAR ID";
+    generarBtn.disabled = false;
+});
+
+// COPIAR
+copyBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(pResultat.textContent);
+    copyBtn.textContent = "Copiat ✓";
+    setTimeout(() => copyBtn.textContent = "Copiar", 2000);
+});
+</script>
+</body>
+</html>
